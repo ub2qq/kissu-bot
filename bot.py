@@ -1,4 +1,5 @@
-import sqlite3, time, threading, requests, telebot
+import os, sqlite3, time, threading, requests, telebot
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 BOT_TOKEN = "9097713241:AAFjxbWR26Dj_YZw0CmwCz5_kVO2hJj0vRE"
@@ -9,6 +10,22 @@ ADMIN_ID = 8539777823
 ADMIN_USERNAME = "@ub2_q"
 UPI_ID = "noname0011@axl"
 REFER_COMMISSION_PERCENT = 5.0
+
+# --- Dummy HTTP Server for Render Free Tier ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running 24/7!")
+    def log_message(self, format, *args):
+        return
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_http_server, daemon=True).start()
 
 COUNTRY_DATA = {
     "2": {"name": "Kazakhstan", "flag": "KZ", "price": 42.0},
@@ -236,4 +253,7 @@ def callbacks(call):
         h = res.get("hash_code")
         update_bal(uid, -p)
         bot.send_message(call.message.chat.id, f"<b>Number:</b> <code>{ph}</code>\nDeducted: Rs {int(p)}\nWaiting OTP...", parse_mode="HTML")
-        threading.
+        threading.Thread(target=poll_otp, args=(call.message.chat.id, uid, h, p)).start()
+
+print(">> BOT IS RUNNING NOW <<")
+bot.infinity_polling(skip_pending=True)
