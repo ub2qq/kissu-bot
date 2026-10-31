@@ -1,4 +1,5 @@
 import os
+import sys
 import sqlite3
 import time
 import threading
@@ -17,21 +18,23 @@ ADMIN_USERNAME = "@ub2_q"
 UPI_ID = "noname0011@axl"
 REFERRAL_COMMISSION_PERCENT = 5.0
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
-# --- Dummy HTTP Server for Render Free Tier ---
+# --- Dummy HTTP Server for Render ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Bot is running 24/7!")
+        self.wfile.write(b"OK")
 
     def log_message(self, format, *args):
         return
 
 def run_http_server():
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"HTTP Server listening on port {port}...", flush=True)
     server.serve_forever()
 
 # --- Database Setup ---
@@ -67,39 +70,35 @@ def get_user(user_id, referrer_id=None):
     conn.close()
     return balance
 
-def update_balance(user_id, amount):
-    conn = sqlite3.connect("bot_database.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-    conn.commit()
-    conn.close()
-
 # --- Bot Handlers ---
 @bot.message_handler(commands=['start'])
 def start_handler(message):
-    args = message.text.split()
-    referrer_id = None
-    if len(args) > 1 and args[1].startswith("ref_"):
-        try:
-            potential_ref = int(args[1].replace("ref_", ""))
-            if potential_ref != message.chat.id:
-                referrer_id = potential_ref
-        except:
-            pass
+    try:
+        args = message.text.split()
+        referrer_id = None
+        if len(args) > 1 and args[1].startswith("ref_"):
+            try:
+                potential_ref = int(args[1].replace("ref_", ""))
+                if potential_ref != message.chat.id:
+                    referrer_id = potential_ref
+            except:
+                pass
 
-    get_user(message.chat.id, referrer_id)
+        get_user(message.chat.id, referrer_id)
 
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton("Wallet Balance", callback_data="wallet"),
-        InlineKeyboardButton("Add Fund (UPI)", callback_data="add_fund"),
-        InlineKeyboardButton("Refer & Earn (5%)", callback_data="refer")
-    )
-    bot.send_message(
-        message.chat.id,
-        "👋 Welcome! Number buy karne aur balance manage karne ke liye options choose karein:",
-        reply_markup=markup
-    )
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            InlineKeyboardButton("Wallet Balance", callback_data="wallet"),
+            InlineKeyboardButton("Add Fund (UPI)", callback_data="add_fund"),
+            InlineKeyboardButton("Refer & Earn (5%)", callback_data="refer")
+        )
+        bot.send_message(
+            message.chat.id,
+            "👋 Welcome! Number buy karne aur balance manage karne ke liye options choose karein:",
+            reply_markup=markup
+        )
+    except Exception as e:
+        print(f"Error in start: {e}", flush=True)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
@@ -151,37 +150,41 @@ def callback_handler(call):
                 f"Total Referrals: {total_refs}"
             )
     except Exception as e:
-        try:
-            bot.answer_callback_query(call.id)
-        except:
-            pass
+        print(f"Callback error: {e}", flush=True)
 
 @bot.message_handler(content_types=['photo', 'text'])
 def payment_proof_handler(message):
-    if message.text and message.text.startswith('/'):
-        return
+    try:
+        if message.text and message.text.startswith('/'):
+            return
 
-    bot.send_message(
-        message.chat.id,
-        f"Proof received! 10 minutes ka wait karein, check karke add kar diya jayega.\nSupport: {ADMIN_USERNAME}"
-    )
-    if message.photo:
-        bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-    elif message.text:
-        bot.send_message(ADMIN_ID, f"UTR/Message from user {message.chat.id}:\n{message.text}")
+        bot.send_message(
+            message.chat.id,
+            f"Proof received! 10 minutes ka wait karein, check karke add kar diya jayega.\nSupport: {ADMIN_USERNAME}"
+        )
+        if message.photo:
+            bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+        elif message.text:
+            bot.send_message(ADMIN_ID, f"UTR/Message from user {message.chat.id}:\n{message.text}")
+    except Exception as e:
+        print(f"Proof handler error: {e}", flush=True)
 
-# --- Polling Runner with Auto-Reconnect ---
-def start_bot_polling():
+# --- Start Server & Polling ---
+if __name__ == '__main__':
+    # Web server thread
+    server_thread = threading.Thread(target=run_http_server, daemon=True)
+    server_thread.start()
+
+    print("Clearing old webhooks & pending updates...", flush=True)
+    try:
+        bot.remove_webhook()
+    except Exception:
+        pass
+
+    print("Bot polling started successfully!", flush=True)
     while True:
         try:
-            print("Starting Telegram Bot Polling...")
-            bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+            bot.polling(none_stop=True, interval=0, timeout=20, skip_pending=True)
         except Exception as e:
-            print(f"Polling error caught: {e}")
-            time.sleep(3)
-
-if __name__ == '__main__':
-    # Background me HTTP server run karega Render ke liye
-    threading.Thread(target=run_http_server, daemon=True).start()
-    # Main thread par bot polling chalegi
-    start_bot_polling()
+            print(f"Polling loop restart after error: {e}", flush=True)
+            time.sleep(2)
