@@ -9,7 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- Config & Keys ---
-BOT_TOKEN = "9097713241:AAFjxbWR26Dj_YZwOCmwCz5_kVO2hjJ0vRE"
+BOT_TOKEN = "9097713241:AAGxalKh5kYd-mdm3TU4OML9-TCHQduEw_Q"
 TG_SHARK_API_KEY = "tgsharkapi-WO-KNCM9K2unyWXcn6_Y6FgzbyLE3O"
 BASE_URL = "https://tgsharkapi.store/api/v1"
 
@@ -171,7 +171,6 @@ def payment_proof_handler(message):
 
 # --- Start Server & Polling ---
 if __name__ == '__main__':
-    # Web server thread
     server_thread = threading.Thread(target=run_http_server, daemon=True)
     server_thread.start()
 
@@ -188,3 +187,4 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"Polling loop restart after error: {e}", flush=True)
             time.sleep(2)
+              
